@@ -1,0 +1,100 @@
+---
+title: "FastPG vs. PhenoGraph"
+author: "Sara Selitsky"
+date: "3/4/2020"
+output: html_document
+---
+
+# Load libraries and functions
+```{r, message=FALSE}
+# for FCS
+library(flowCore)
+
+# metrics
+library(mclust)
+library(FlowSOM)
+
+# for fastPG
+library(FastPG)
+
+# PhenoGraph
+library(RANN)
+library(Rcpp)
+find_neighbors <- function(data, k){
+  nearest <- nn2(data, data, k, treetype = "kd", searchtype = "standard")
+  return(nearest[[1]])
+}
+sourceCpp(file = "~/Documents/CyTOF/jaccard_coeff.cpp")
+```
+
+
+# Load "Gold standard" data
+```{r}
+## Levine 13
+ldf<-as.data.frame(exprs(read.FCS("~/Documents/fastPG/gold_standard/Levine_13dim.fcs")))
+ldf<-ldf[which(!is.na(ldf$label)),]
+lab_l13<-ldf$label
+Levine13<-ldf[,1:13]
+
+# Levine 32
+ldf<-as.data.frame(exprs(read.FCS("~/Documents/fastPG/gold_standard/Levine_32dim.fcs")))
+ldf<-ldf[which(!is.na(ldf$label)),]
+lab_l32<-ldf$label
+Levine32<-ldf[,5:36]
+
+# Samusik
+ldf<-as.data.frame(exprs(read.FCS("~/Documents/fastPG/gold_standard/Samusik_all.fcs")))
+ldf<-ldf[which(!is.na(ldf$label)),]
+lab_samAll<-ldf$label
+SamusikAll<-ldf[,10:47]
+
+# Samusik 01
+ldf<-as.data.frame(exprs(read.FCS("~/Documents/fastPG/gold_standard/Samusik_01.fcs")))
+ldf<-ldf[which(!is.na(ldf$label)),]
+lab_sam01<-ldf$label
+Samusik01<-ldf[,10:47]
+
+gs<-c("Levine13","Levine32","SamusikAll","Samusik01")
+list <- lapply(gs, get)
+
+lab<-c("lab_l13","lab_l32","lab_samAll","lab_sam01")
+list_lab <- lapply(lab, get)
+```
+
+
+```{r,message=FALSE}
+results<- NULL
+count=0
+
+for(model in list){
+  count=count+1
+    for(i in 1:10){
+      model<-as.data.frame(model)
+      s<-sample(1:dim(model)[1],20000)
+      orig<-as.data.frame(list_lab[count])
+      colnames(orig)<-"label"
+      origs<-orig[s,]
+      dat<-as.matrix(model[s,])
+
+      # fastPG
+      cluster<-fastCluster(dat,k = 30, num_threads = 4)
+      nms<-cluster$communities
+      fpgf<-FMeasure(origs,nms)
+
+      # phenoGraph
+      neighborMatrix <- find_neighbors(dat, k=30)[,-1]
+      links <- jaccard_coeff(neighborMatrix)
+      links <- links[links[,1]>0, ]
+      relations <- as.data.frame(links)
+      colnames(relations)<- c("from","to","weight")
+      g <- graph.data.frame(relations, directed=FALSE)
+      community <- cluster_louvain(g)
+      bd<-community$membership
+      pgf<-FMeasure(origs,bd)
+
+      # record results
+      results<-rbind(results,data.frame(gs[count],fpgf,pgf))
+    }
+}
+
+```
