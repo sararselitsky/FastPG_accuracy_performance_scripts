@@ -1,0 +1,77 @@
+---
+title: "scRNA-seq Seurat vs. FastPG"
+output: html_document
+---
+
+```{r}
+# load pacakges
+library(flowCore)
+# FastPG
+library(reticulate)
+use_python('/usr/bin/python3',required = TRUE)
+library(FastPG)
+
+# FlowSOM
+library(FlowSOM)
+
+# Seurat
+library(Seurat)
+
+
+############# load gold standard, pre-processed data #################
+## Zhengmix4eq.30PC
+ldf_z4<-readRDS(file="/home/Sara/Zhengmix4eq.30PC.rds")
+z4_labels<-readRDS(file="/home/Sara/Zhengmix4eq.label.rds")
+z4_labels<-seq(1,length(unique(z4_labels)),1)[as.factor(z4_labels)]
+
+# Zhengmix8eq.30PC
+ldf_z8<-readRDS(file="/home/Sara/Zhengmix8eq.30PC.rds")
+z8_labels<-readRDS(file="/home/Sara/Zhengmix8eq.label.rds")
+z8_labels<-seq(1,length(unique(z8_labels)),1)[as.factor(z8_labels)]
+
+# pbmc68k.30PC
+ldf_p68<-readRDS(file="/home/Sara/pbmc68k.30PC.rds")
+p68_labels<-read.delim(file="/home/Sara/zheng17-PBMC68K-cell-labels.txt")
+p68_labels<-p68_labels[which(p68_labels$barcode %in% rownames(ldf_p68)),]
+p68_labels<-seq(1,length(unique(p68_labels$bulk_labels)),1)[as.factor(p68_labels$bulk_labels)]
+
+############# Format data for testing #################
+
+gs<-c("ldf_z4","ldf_z8","ldf_p68")
+list <- lapply(gs, get)
+lab<-c("z4_labels","z8_labels","p68_labels")
+list_lab <- lapply(lab, get)
+
+############# Test precision and accuracy #################
+
+results<- NULL
+count=0
+for(model in list){
+  count=count+1
+    for(i in 1:10){
+      model<-as.data.frame(model)
+      s<-sample(1:dim(model)[1],2000)
+      orig<-as.data.frame(list_lab[count])
+      colnames(orig)<-"label"
+      origs<-orig[s,]
+      dat<-as.matrix(model[s,])
+      
+      # FastPG
+      cluster<-fastCluster(dat,k = 30, num_threads = 4)
+      nms<-cluster$communities
+      fpgf<-FMeasure(origs,nms)
+
+      # Seurat
+      seu <- FindNeighbors(dat, k.param = 30,reduction = "pca") 
+      seu <- FindClusters(seu$snn,resolution = 0.8)
+      sf<-FMeasure(origs,as.numeric(seu$res.0.8))
+      seu<-NULL
+     
+      # record results
+      results<-rbind(results,data.frame(gs[count],sf,fpgf))
+    }
+}
+
+```
+
+
