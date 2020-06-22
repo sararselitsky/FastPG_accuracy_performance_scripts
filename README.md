@@ -1,5 +1,6 @@
 # FastPG accuracy performance scripts
 Scripts used in the manuscript "FastPG: Fast clustering of millions of single cells"
+https://www.biorxiv.org/content/10.1101/2020.06.19.159749v1
 
 Running fastpg_compare.R:
 Need to download gold standard data and change appropriate directories.
